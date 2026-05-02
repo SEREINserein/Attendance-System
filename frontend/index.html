@@ -1,1 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>班级考勤系统 - 内容安全综合设计</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1400px; margin: 20px auto; padding: 0 20px; background: #f5f7fa; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ccc; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; background: #e9ecef; border: none; border-radius: 8px 8px 0 0; }
+        .tab-btn.active { background: #007bff; color: white; }
+        .tab-content { display: none; background: white; padding: 20px; border-radius: 0 8px 8px 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .tab-content.active { display: block; }
+        .role-switch { margin-bottom: 20px; display: flex; gap: 10px; align-items: center; justify-content: flex-end; }
+        .role-btn { padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .role-btn.active { background: #28a745; }
+        #video { width: 100%; max-width: 500px; border: 2px solid #ddd; border-radius: 8px; background: #000; }
+        button { background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #0056b3; }
+        .result-area { margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f2f2f2; }
+        canvas { max-width: 800px; margin-top: 20px; background: white; }
+        .auto-mode { background: #e9ecef; padding: 10px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 15px; }
+        .chart-control { margin: 15px 0; }
+        select, button { margin-right: 10px; }
 
+        /* 放大日期输入框 */
+        .date-input {
+            font-size: 16px;
+            padding: 8px 12px;
+            width: 220px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #fff;
+        }
+        .query-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+    </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Flatpickr 日历库 (轻量、美观、可放大) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- 中文语言包 -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+</head>
+<body>
+<div class="role-switch">
+    <span>当前角色：</span>
+    <button class="role-btn" data-role="student">学生视图</button>
+    <button class="role-btn active" data-role="teacher">教师视图</button>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" data-tab="attendance">考勤打卡</button>
+    <button class="tab-btn" data-tab="group">合照识别</button>
+    <button class="tab-btn" data-tab="records">考勤记录</button>
+    <button class="tab-btn" data-tab="emotion">情绪统计</button>
+</div>
+
+<!-- 1. 考勤打卡 -->
+<div id="attendance" class="tab-content active">
+    <h3>摄像头实时采集</h3>
+    <div class="auto-mode">
+        <label><input type="checkbox" id="autoModeCheckbox"> 开启自动人脸捕捉考勤 (每隔2秒检测)</label>
+        <span style="font-size: 14px; color: #666;">* 检测到人脸后自动比对并打卡，5秒内不重复</span>
+    </div>
+    <video id="video" autoplay playsinline></video><br>
+    <button id="captureBtn">📸 拍照考勤（手动）</button>
+    <div id="attendanceResult" class="result-area">点击拍照或开启自动模式后显示考勤结果...</div>
+</div>
+
+<!-- 2. 合照识别 -->
+<div id="group" class="tab-content">
+    <h3>上传班级大合照</h3>
+    <input type="file" id="groupPhoto" accept="image/jpeg,image/png">
+    <button id="uploadGroupBtn">上传并识别</button>
+    <div id="groupResult" class="result-area">识别出的学生名单将显示在这里...</div>
+</div>
+
+<!-- 3. 考勤记录 + 活动频次图表 -->
+<div id="records" class="tab-content">
+    <h3>考勤记录与活动参与统计</h3>
+    <div class="query-bar">
+        <input type="text" id="searchStudentId" placeholder="学号（可选）" style="padding: 8px; width: 150px;">
+        <input type="text" id="searchDate" class="date-input" placeholder="选择日期" readonly>
+        <button id="searchRecordsBtn">查询</button>
+        <button id="exportExcelBtn">导出Excel</button>
+    </div>
+    <div id="recordsList"></div>
+
+    <div class="chart-control">
+        <h4>📊 学生活动参与次数统计</h4>
+        <select id="chartType">
+            <option value="bar">柱状图</option>
+            <option value="line">折线图</option>
+        </select>
+        <button id="refreshActivityChart">生成图表</button>
+    </div>
+    <canvas id="activityChart" width="800" height="400"></canvas>
+</div>
+
+<!-- 4. 情绪统计 -->
+<div id="emotion" class="tab-content">
+    <h3>情绪分析统计</h3>
+    <canvas id="emotionChart" width="400" height="300"></canvas>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
